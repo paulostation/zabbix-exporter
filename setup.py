@@ -14,7 +14,7 @@ with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
 requirements = [
-    'prometheus-client>=0.0.13',
+    'prometheus-client>=0.17.1',
     'pyzabbix>=0.7.4',
     'PyYAML>=3.11',
     'click>=6.4',

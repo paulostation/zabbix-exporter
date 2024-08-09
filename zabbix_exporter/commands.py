@@ -120,3 +120,6 @@ def dump_metrics(collector):
             name=item['name']
         ))
     return
+
+if __name__ == '__main__':
+    cli()

@@ -5,12 +5,12 @@
 """
 from .compat import StringIO
 from prometheus_client import core
-
+import logging
 
 class MetricFamily(core.Metric):
 
     def __init__(self, typ, name, documentation, value=None, labels=None):
-        core.Metric.__init__(self, name, documentation, typ)
+        super().__init__(name, documentation, typ)
         if labels is not None and value is not None:
             raise ValueError('Can only specify at most one of value and labels.')
         if labels is None:
@@ -22,7 +22,6 @@ class MetricFamily(core.Metric):
     def add_metric(self, labels, value, timestamp=None):
         self.samples.append((self.name, dict(zip(self._labelnames, labels)), value, timestamp))
 
-
 def generate_latest(registry=core.REGISTRY):
     '''Returns the metrics from the registry in latest text format as a string.'''
     output = []
@@ -31,11 +30,15 @@ def generate_latest(registry=core.REGISTRY):
             metric.name, metric.documentation.replace('\\', r'\\').replace('\n', r'\n')))
         output.append('\n# TYPE {0} {1}\n'.format(metric.name, metric.type))
         for sample in metric.samples:
+            # logger.info(sample)
+            # logger.info(output)
             if len(sample) == 3:
                 name, labels, value = sample
                 timestamp = None
+            elif len(sample) == 4:
+                name, labels, value, timestamp = sample            
             else:
-                name, labels, value, timestamp = sample
+                name, labels, value, timestamp, _ = sample
             if labels:
                 labelstr = '{{{0}}}'.format(','.join(
                     ['{0}="{1}"'.format(
@@ -43,8 +46,9 @@ def generate_latest(registry=core.REGISTRY):
                      for k, v in sorted(labels.items())]))
             else:
                 labelstr = ''
-            output.append('{0}{1} {2}{3}\n'.format(name, labelstr, core._floatToGoString(value),
+            output.append('{0}{1} {2}{3}\n'.format(name, labelstr, value,
                                                    ' %s' % timestamp if timestamp else ''))
+    
     return ''.join(output).encode('utf-8')
 
 
