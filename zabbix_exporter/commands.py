@@ -9,8 +9,23 @@ from prometheus_client import REGISTRY
 import zabbix_exporter
 from zabbix_exporter.core import ZabbixCollector, MetricsHandler
 from .compat import HTTPServer
+from loguru import logger
+# logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
+# Set the global logger level to TRACE
+logger.level("TRACE")
+
+# Remove the default logger
+logger.remove()
+
+# Add logger for console output (INFO level)
+logger.add(sys.stdout, level="INFO")
+
+# Add logger for debug.log (DEBUG level)
+logger.add("debug.log", level="DEBUG", rotation="500 MB")
+
+# Add logger for trace.log (TRACE level)
+logger.add("trace.log", level="TRACE", rotation="500 MB")
 
 
 def validate_settings(settings):
@@ -77,13 +92,13 @@ def cli(**settings):
     else:
         exporter_config = {}
 
-    base_logger = logging.getLogger('zabbix_exporter')
-    handler = logging.StreamHandler()
-    base_logger.addHandler(handler)
-    base_logger.setLevel(logging.ERROR)
-    handler.setFormatter(logging.Formatter('[%(asctime)s] %(message)s', "%Y-%m-%d %H:%M:%S"))
-    if settings['verbose']:
-        base_logger.setLevel(logging.DEBUG)
+    # base_logger = logger
+    # handler = logging.StreamHandler()
+    # base_logger.addHandler(handler)
+    # base_logger.setLevel(logging.ERROR)
+    # handler.setFormatter(logging.Formatter('[%(asctime)s] %(message)s', "%Y-%m-%d %H:%M:%S"))
+    # if settings['verbose']:
+        # base_logger.setLevel(logging.DEBUG)
 
     collector = ZabbixCollector(
         base_url=settings['url'].rstrip('/'),
@@ -96,7 +111,7 @@ def cli(**settings):
 
     if settings['dump_metrics']:
         return dump_metrics(collector)
-
+    logger.info("About to register metrics.")
     REGISTRY.register(collector)
     httpd = HTTPServer(('', int(settings['port'])), MetricsHandler)
     click.echo('Exporter for {base_url}, user: {login}, password: ***'.format(

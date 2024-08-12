@@ -5,7 +5,7 @@
 """
 from .compat import StringIO
 from prometheus_client import core
-import logging
+from loguru import logger
 
 class MetricFamily(core.Metric):
 
@@ -24,6 +24,7 @@ class MetricFamily(core.Metric):
 
 def generate_latest(registry=core.REGISTRY):
     '''Returns the metrics from the registry in latest text format as a string.'''
+    logger.info("Started generating metrics")
     output = []
     for metric in registry.collect():
         output.append('# HELP {0} {1}'.format(

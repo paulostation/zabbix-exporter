@@ -34,7 +34,6 @@ def prepare_regex(key_pattern):
 
 
 class ZabbixCollector(object):
-
     def __init__(self, base_url, login, password, verify_tls=True, timeout=None, **options):
         self.options = options
         self.key_patterns = {prepare_regex(metric['key']): metric
@@ -54,12 +53,17 @@ class ZabbixCollector(object):
 
         self.zapi.login(login, password)
 
-        self.host_mapping = {row['hostid']: row['name']
-                             for row in self.zapi.host.get(output=['hostid', 'name'])}
+        self.host_mapping = {
+            row['hostid']: {
+                'name': row['name'],
+                'tags': {tag['tag']: tag['value'] for tag in row.get('tags', [])}
+            }
+            for row in self.zapi.host.get(output=['hostid', 'name'], selectTags='extend')
+        }
 
     def process_metric(self, item):
         if not self.is_exportable(item):
-            logger.debug('Dropping unsupported metric %s', item['key_'])
+            logger.warning('Dropping unsupported metric {} because it\'s not exportable'.format(item['key_']))
             return
 
         metric = item['key_']
@@ -93,18 +97,44 @@ class ZabbixCollector(object):
                 break
         else:
             if self.options.get('explicit_metrics', False):
-                logger.debug('Dropping implicit metric name %s', item['key_'])
+                logger.warning('Dropping implicit metric name %s', item['key_'])
                 return
-
-
 
         if not self.host_mapping.get(item['hostid']):
             return
 
-        # automatic host -> instance labeling
-        labels_mapping['instance'] = self.host_mapping[item['hostid']]
 
-        logger.debug('Converted: %s -> %s [%s]', item['key_'], metric, labels_mapping)
+        # automatic host -> instance labeling
+        host = self.host_mapping[item['hostid']]
+        instance_name = host["name"]
+        labels_mapping['instance'] = instance_name
+        # if metric.startswith('icmp'):
+        #     pass
+        # if metric.startswith('unifi'):
+        #     pass
+
+        # Adding item tags to labels_mapping
+        tags = item.get('tags', [])
+
+        # if len(host['tags']) > 0:
+        #     if "PDC" in host['name']: 
+        #         pass
+
+        for tag in tags:
+            
+            if tag.get('value') and tag.get('value') != '':
+                labels_mapping[f"{tag['tag'].lower()}"] = tag['value'].lower()
+                logger.trace(f"Added item tag {tag['tag']}: {tag['value']} to metric {metric}")
+            else:
+                logger.warning(f"Tag {tag.get('tag')} for metric {metric} is empty")
+
+        # add host tags to labels_mapping
+        for name, value in host["tags"].items():
+            if value and value != '':
+                labels_mapping[name] = value
+                logger.trace(f"Added host tag {name}: {value} to metric {metric}")
+
+        logger.debug('Converted: {} -> {} [{}]'.format(item['key_'], metric, labels_mapping))
         return {
             'name': sanitize_key(metric),
             'type': metric_options.get('type', 'untyped'),  # untyped by default
@@ -117,20 +147,23 @@ class ZabbixCollector(object):
         enable_timestamps = self.options.get('enable_timestamps', False)
         metric_families = OrderedDict()
 
-        # Fetch items with basic details
+        # Fetch items with basic details and tags
         items = self.zapi.item.get(output=['name', 'key_', 'hostid', 'lastvalue', 'lastclock', 'value_type'],
-                                sortfield='key_')
-
+                                   sortfield='key_', selectTags='extend')
+        
+        logger.info(f"{len(items)} items fetched from zabbix API.")
         # Fetch all hosts and their host groups
         host_ids = list(set(item['hostid'] for item in items))
         hosts = self.zapi.host.get(output=['hostid', 'name'],
-                                selectGroups=['groupid', 'name'],
-                                hostids=host_ids)
+                                   selectGroups=['groupid', 'name'],
+                                   hostids=host_ids)
 
         # Create a mapping of host ID to host groups
         host_groups_mapping = {host['hostid']: host['groups'] for host in hosts}
 
         for item in items:
+            logger.debug(f"Item keys {item.keys()}")
+            # if 
             metric = self.process_metric(item)
             if not metric:
                 continue
@@ -144,9 +177,9 @@ class ZabbixCollector(object):
 
             if metric['name'] not in metric_families:
                 family = MetricFamily(typ=metric['type'],
-                                    name=metric['name'],
-                                    documentation=metric['documentation'],
-                                    labels=metric['labels_mapping'].keys())
+                                      name=metric['name'],
+                                      documentation=metric['documentation'],
+                                      labels=metric['labels_mapping'].keys())
                 metric_families[metric['name']] = family
 
             metric_families[metric['name']].add_metric(
@@ -163,7 +196,6 @@ class ZabbixCollector(object):
     def is_exportable(self, item):
         return item['value_type'] in {'0', '3'}  # only numeric/float values
 
-
 class MetricsHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/metrics':
@@ -179,6 +211,7 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', CONTENT_TYPE_LATEST)
             self.end_headers()
             self.wfile.write(response)
+            logger.info(f"Response with length {len(response)} and status {status} sent to client.")
         else:
             self.send_response(404)
             self.end_headers()
@@ -197,7 +230,8 @@ import zabbix_exporter
 from zabbix_exporter.core import ZabbixCollector, MetricsHandler
 from .compat import HTTPServer
 
-logger = logging.getLogger(__name__)
+from loguru import logger
+# logger = logging.getLogger(__name__)
 
 
 def validate_settings(settings):
