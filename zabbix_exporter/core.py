@@ -135,12 +135,16 @@ class ZabbixCollector(object):
                 logger.trace(f"Added host tag {name}: {value} to metric {metric}")
 
         logger.debug('Converted: {} -> {} [{}]'.format(item['key_'], metric, labels_mapping))
-        return {
+        
+        
+        metric = {
             'name': sanitize_key(metric),
             'type': metric_options.get('type', 'untyped'),  # untyped by default
             'documentation': metric_options.get('help', item['name']),
             'labels_mapping': labels_mapping,
         }
+
+        return metric
 
     def collect(self):
         series_count = 0
@@ -163,7 +167,8 @@ class ZabbixCollector(object):
 
         for item in items:
             logger.debug(f"Item keys {item.keys()}")
-            # if 
+            if "meraki.get.data" in item["key_"]:
+                pass
             metric = self.process_metric(item)
             if not metric:
                 continue

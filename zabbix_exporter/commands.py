@@ -90,7 +90,9 @@ def cli(**settings):
     if settings['config']:
         exporter_config = yaml.safe_load(open(settings['config']))
     else:
-        exporter_config = {}
+        exporter_config = {
+            "explicit_metrics": False
+        }
 
     # base_logger = logger
     # handler = logging.StreamHandler()
@@ -105,7 +107,7 @@ def cli(**settings):
         login=settings['login'],
         password=settings['password'],
         verify_tls=settings['verify_tls'],
-        timeout=settings['timeout'],
+        timeout=settings['timeout'],        
         **exporter_config
     )
 
@@ -137,4 +139,9 @@ def dump_metrics(collector):
     return
 
 if __name__ == '__main__':
-    cli()
+    try:
+        cli()
+    except KeyboardInterrupt:
+        logger.info("Shutting down gracefully")
+    except Exception:
+        logger.exception("Unhandled exc")
